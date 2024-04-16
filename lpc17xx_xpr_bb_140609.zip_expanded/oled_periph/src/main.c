@@ -20,11 +20,8 @@
 #include "temp.h"
 #include "light.h"
 
-
-static uint8_t tempX = 48;
-static uint8_t tempY = 34;
-
-
+int32_t temperature = 0;
+int32_t pressure = 0;
 
 static uint32_t msTicks = 0;
 static uint8_t buf[10];
@@ -147,10 +144,8 @@ static void init_i2c(void)
 	I2C_Cmd(LPC_I2C2, ENABLE);
 }
 
-int32_t calc_pressure()
+int32_t calculatePressure()
 {
-	int32_t PressureError = 0;
-
 	uint8_t bufor[3];
 
 	uint8_t adres = 0x77;
@@ -233,12 +228,6 @@ int32_t calc_pressure()
 
 		ut = (bufor[0] << 8) | bufor[1];
 
-		if (PressureError == 1)
-		{
-			oled_putString(tempX, 54, (uint8_t *)"             ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-			PressureError = 0;
-		}
-
 		int16_t oss = 2;
 		int32_t up;
 
@@ -280,19 +269,45 @@ int32_t calc_pressure()
 		x1 = (x1 * 3038) >> 16;
 		x2 = (-7357 * p) >> 16;
 		p = p + ((x1 + x2 + (int32_t)3791) >> 4);
-		intToString((uint32_t)((p / 100) + 25), buf, 10, 10);
-		oled_putString(tempX, 12, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-		oled_putString(tempX + 24, 12, (uint8_t *)"hPa", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+		return p;
 	}
-	else
-	{
-		if (PressureError == 0)
-		{
-			oled_putString(tempX, 54, (uint8_t *)"             ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-			oled_putString(tempX, 54, (uint8_t *)"ERROR", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-		}
-		PressureError = 1;
-	}
+}
+
+void printData()
+{
+
+	oled_putString(1,1,  (uint8_t*)"Temp: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(1,12,  (uint8_t*)"Press: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	//Temperatura
+
+	int32_t t_real = 0;
+	int32_t t_remainder = 0;
+	t_real = temperature / 10;
+	t_remainder = temperature % 10;
+	intToString((uint32_t)t_real, buf, 10, 10);
+
+	oled_putString(48, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	oled_putString(48 + 12, 1, (uint8_t *)".", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	intToString((uint32_t)t_remainder, buf, 10, 10);
+	oled_putString(48 + 16, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	oled_putPixel(48 + 25, 1, OLED_COLOR_BLACK);
+	oled_putPixel(48 + 25, 2, OLED_COLOR_BLACK);
+	oled_putPixel(48 + 26, 1, OLED_COLOR_BLACK);
+	oled_putPixel(48 + 26, 2, OLED_COLOR_BLACK);
+
+	oled_putString(48 + 28, 1, (uint8_t *)"C", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	//Cisnienie
+
+	intToString((uint32_t)((pressure / 100) + 25), buf, 10, 10);
+	oled_putString(48, 12, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(48 + 24, 12, (uint8_t *)"hPa", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
 }
 
 int main (void)
@@ -314,36 +329,13 @@ int main (void)
 
     oled_clearScreen(OLED_COLOR_WHITE);
 
-    oled_putString(1,1,  (uint8_t*)"Temp: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-    oled_putString(1,12,  (uint8_t*)"Press: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
 
     while(1) {
 
-        /* Temperature */
-        t = temp_read();
-        calc_pressure();
+        temperature = temp_read();
+        pressure = calculatePressure();
 
-        /* output values to OLED display */
-        int32_t t_real = 0;
-        	int32_t t_remainder = 0;
-        t_real = t / 10;
-        	t_remainder = t % 10;
-        intToString((uint32_t)t_real, buf, 10, 10);
-
-        	oled_putString(tempX, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        	oled_putString(tempX + 12, 1, (uint8_t *)".", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        	intToString((uint32_t)t_remainder, buf, 10, 10);
-        	oled_putString(tempX + 16, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        	oled_putPixel(tempX + 25, 1, OLED_COLOR_BLACK);
-        	oled_putPixel(tempX + 25, 2, OLED_COLOR_BLACK);
-        	oled_putPixel(tempX + 26, 1, OLED_COLOR_BLACK);
-        	oled_putPixel(tempX + 26, 2, OLED_COLOR_BLACK);
-
-        	oled_putString(tempX + 28, 1, (uint8_t *)"C", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+        printData();
 
         /* delay */
         Timer0_Wait(200);
