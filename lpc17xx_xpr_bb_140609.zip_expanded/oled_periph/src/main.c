@@ -1,15 +1,3 @@
-/*****************************************************************************
- *   Peripherals such as temp sensor, light sensor, accelerometer,
- *   and trim potentiometer are monitored and values are written to
- *   the OLED display.
- *
- *   Copyright(C) 2010, Embedded Artists AB
- *   All rights reserved.
- *
- ******************************************************************************/
-
-
-
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_i2c.h"
 #include "lpc17xx_gpio.h"
@@ -20,8 +8,14 @@
 #include "temp.h"
 #include "light.h"
 
+//---------------------------------------
+
+//  Zmienne na dane odczytane z czujnikow
+
 int32_t temperature = 0;
 int32_t pressure = 0;
+
+//---------------------------------------
 
 static uint32_t msTicks = 0;
 static uint8_t buf[10];
@@ -146,103 +140,119 @@ static void init_i2c(void)
 
 int32_t calculatePressure()
 {
-	uint8_t bufor[3];
+	uint8_t communicationBuffer[3];
 
-	uint8_t adres = 0x77;
+	uint8_t deviceAddress = 0x77; //   Dokumentacja BMP180, strona 20
 
-	int16_t ac1, ac2, ac3, b1, b2, mb, mc, md;
-	uint16_t ac4, ac5, ac6;
+	// Wartosci potrzebne do poprawnego odczytu cisnienia (przy okazji temperatury)
+	// Wystepuja w pierwszym kroku algorytmu opisanego w dokumentacji czujnika
+	int16_t ac1, ac2, ac3, b1, b2, mb, mc, md; //   Dokumentacja BMP180
+	uint16_t ac4, ac5, ac6;                    //   Strona 15
 
 	int32_t b6, x3, b3, p;
 	uint32_t b4, b7;
 
-	bufor[0] = 0xAA;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	ac1 = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xAA; // Adres rejestru z pierwsza czescia zmiennej kalibracyjnej (8 bitow MSB = Most Significant Bit)
+								   // Dokumentacja strona 13
+	                               // Czytamy z E2PROM czyli nieulotna pamiec tylko do odczytu
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2); // Ostateczenie do bufora wczytalismy 8 bitow z rejestru 0xAA oraz 8 bitow z 0xAB (LSB = Least Significant Bit)
+	ac1 = (communicationBuffer[0] << 8) | communicationBuffer[1]; // Po wczytaniu, "sklejamy" dwa poczatkowo oddzielne bajty
+	 															  // w cala wartosc potrzebna do kalibracji
 
-	bufor[0] = 0xAC;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	ac2 = (bufor[0] << 8) | bufor[1];
 
-	bufor[0] = 0xAE;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	ac3 = (bufor[0] << 8) | bufor[1];
+	// Analogicznie dla reszty
+	communicationBuffer[0] = 0xAC;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	ac2 = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xB0;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	ac4 = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xAE;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	ac3 = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xB2;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	ac5 = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xB0;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	ac4 = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xB4;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	ac6 = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xB2;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	ac5 = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xB6;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	b1 = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xB4;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	ac6 = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xB8;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	b2 = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xB6;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	b1 = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xBA;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	mb = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xB8;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	b2 = (communicationBuffer[0] << 8) | communicationBuffer[1];
+
+	communicationBuffer[0] = 0xBA;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	mb = (communicationBuffer[0] << 8) | communicationBuffer[1];
 	mb++;
 
-	bufor[0] = 0xBC;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	mc = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xBC;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	mc = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xBE;
-	I2CWrite(adres, bufor, 1);
-	I2CRead(adres, bufor, 2);
-	md = (bufor[0] << 8) | bufor[1];
+	communicationBuffer[0] = 0xBE;
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	I2CRead(deviceAddress, communicationBuffer, 2);
+	md = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-	bufor[0] = 0xD0;
-	I2CWrite(adres, bufor, 1);
-	if (I2CRead(adres, bufor, 1) == 0 && bufor[0] == (uint8_t)0x55)
+	communicationBuffer[0] = 0xD0; // Rejestr, dzieki ktoremu mozna sprawdzic czy komunikacja dziala
+								   // Zgodnie z dokumentacja (strona 18), powienien przechowywac wartosc 0x55
+	I2CWrite(deviceAddress, communicationBuffer, 1);
+	// Jezeli z komunikacja wszystko w porzadku, przechodzimy do nastepnego kroku algorytmu z dokumentacji
+	if (I2CRead(deviceAddress, communicationBuffer, 1) == 0 && communicationBuffer[0] == (uint8_t)0x55)
 	{
-		int32_t ut;
+		int32_t ut; // long
 
-		bufor[0] = 0xF4;
-		bufor[1] = 0x2E;
-		I2CWrite(adres, bufor, 2);
-		Timer0_Wait(5);
-		bufor[0] = 0xF6;
-		I2CWrite(adres, bufor, 1);
-		I2CRead(adres, bufor, 2);
+		communicationBuffer[0] = 0xF4; // Do tego rejestru
+		communicationBuffer[1] = 0x2E; // Wpisujemy to
+		I2CWrite(deviceAddress, communicationBuffer, 2);
+		Timer0_Wait(5); // Dokumentacja zaleca odczekac 4.5ms.
+		                // Z racji, ze ta prodecura przyjmuje tylko liczby calkowite - mamy zaokraglenie
+		communicationBuffer[0] = 0xF6;
+		I2CWrite(deviceAddress, communicationBuffer, 1);
+		I2CRead(deviceAddress, communicationBuffer, 2);
 
-		ut = (bufor[0] << 8) | bufor[1];
+		ut = (communicationBuffer[0] << 8) | communicationBuffer[1];
 
-		int16_t oss = 2;
+		int16_t oss = 2; // Oversampling w trybie "high resolution". Dokumentacja strona 12
 		int32_t up;
 
-		bufor[0] = 0xF4;
-		bufor[1] = 0xB4; /*0x34 + (oss << 6)*/
-		I2CWrite(adres, bufor, 2);
+		communicationBuffer[0] = 0xF4; // Do tego rejestru
+		communicationBuffer[1] = 0xB4; // Wpisujemy to, czyli to co powstanie po podstawieniu do
+		                               // wzoru z dokumentacji z algorytmu ( 0x34 + (oss << 6) )
+		I2CWrite(deviceAddress, communicationBuffer, 2);
 		Timer0_Wait(14);
-		bufor[0] = 0xF6;
-		I2CWrite(adres, bufor, 1);
-		I2CRead(adres, bufor, 3);
+		communicationBuffer[0] = 0xF6;
+		I2CWrite(deviceAddress, communicationBuffer, 1);
+		I2CRead(deviceAddress, communicationBuffer, 3);
 
-		up = ((bufor[0] << 16) | (bufor[1] << 8) | bufor[2]) >> (8 - oss);
+		up = ((communicationBuffer[0] << 16) | (communicationBuffer[1] << 8) | communicationBuffer[2]) >> (8 - oss); // Wzor z algorytmu
 
 		int32_t x1, x2, b5;
 
+
+		// Tutaj co prawda zmierzamy do policzenia temperatury, lecz w naszym przypadku
+		// potrzeba jedynie wspolczynnika B5, poniewaz wystepuje on w czesci obliczeniowej
+		// dla wartosci cisnienia. Pomiar temepratury wyswietlany na ekranie wykonuje dla
+		// nas zupelnie inny czujnik.
 		x1 = ((ut - ac6) * ac5) >> 15;
 		x2 = (mc << 11) / (x1 + md);
 		b5 = x1 + x2;
@@ -277,67 +287,72 @@ int32_t calculatePressure()
 void printData()
 {
 
+	// Nazwy wyswietlanych danych
+
 	oled_putString(1,1,  (uint8_t*)"Temp: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 	oled_putString(1,12,  (uint8_t*)"Press: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
-	//Temperatura
+	// Temperatura
 
-	int32_t t_real = 0;
-	int32_t t_remainder = 0;
-	t_real = temperature / 10;
-	t_remainder = temperature % 10;
-	intToString((uint32_t)t_real, buf, 10, 10);
+	int32_t integerPart = 0;
+	int32_t fractionPart = 0;
+	integerPart = temperature / 10;
+	fractionPart = temperature % 10;
 
+	// Z racji, ze przekazujemy procedurze odpowiedzialnej za wyswietlanie liczbe calkowita,
+	// musimy "imitowac" ulamek poprzez wyswietlenie oddzielnie czesci calkowitej i ulamkowej.
+	intToString((uint32_t)integerPart, buf, 10, 10);
 	oled_putString(48, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
-	oled_putString(48 + 12, 1, (uint8_t *)".", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(60, 1, (uint8_t *)".", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
-	intToString((uint32_t)t_remainder, buf, 10, 10);
-	oled_putString(48 + 16, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	intToString((uint32_t)fractionPart, buf, 10, 10);
+	oled_putString(64, 1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
-	oled_putPixel(48 + 25, 1, OLED_COLOR_BLACK);
-	oled_putPixel(48 + 25, 2, OLED_COLOR_BLACK);
-	oled_putPixel(48 + 26, 1, OLED_COLOR_BLACK);
-	oled_putPixel(48 + 26, 2, OLED_COLOR_BLACK);
-
-	oled_putString(48 + 28, 1, (uint8_t *)"C", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	// Symbol stopni oraz jednostka
+	oled_putPixel(73, 1, OLED_COLOR_BLACK);
+	oled_putPixel(73, 2, OLED_COLOR_BLACK);
+	oled_putPixel(74, 1, OLED_COLOR_BLACK);
+	oled_putPixel(74, 2, OLED_COLOR_BLACK);
+	oled_putString(76, 1, (uint8_t *)"C", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
 	//Cisnienie
 
 	intToString((uint32_t)((pressure / 100) + 25), buf, 10, 10);
 	oled_putString(48, 12, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-	oled_putString(48 + 24, 12, (uint8_t *)"hPa", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(72, 12, (uint8_t *)"hPa", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
 }
 
 int main (void)
 {
 
-    int32_t t = 0;
-
     init_i2c();
     init_ssp();
-
     oled_init();
 
+	// Przekazujemy wskaznik na funkcje, ktora odmierza czas od uruchomienia programu.
+	// Czas ten moze przekroczyc zakres zmiennej przez co przy tym samym uruchomieniu
+	// moze w pewnym momencie zaczac liczyc od zera.
     temp_init (&getTicks);
-
 
 	if (SysTick_Config(SystemCoreClock / 1000)) {
 		    while (1);  // Capture error
 	}
 
+	// Wypelnienie calego wyswietlacza bialym kolorem
     oled_clearScreen(OLED_COLOR_WHITE);
-
 
     while(1) {
 
+		// Czytamy potrzebne dane
         temperature = temp_read();
         pressure = calculatePressure();
 
+		// Wyswietlamy zebrane dane
         printData();
 
-        /* delay */
+		// Opoznienie w odswiezaniu
         Timer0_Wait(200);
     }
 

@@ -110,6 +110,11 @@ void temp_init (uint32_t (*getMsTicks)(void))
  *****************************************************************************/
 int32_t temp_read (void)
 {
+
+    // Czujnik dziala tak, ze tworzy fale o czestotliwosci proporcjonalnej do temperatury.
+    // Stad potrzebujemy t1 i t2. My korzystamy ze wzoru zawierajacego okres, a nie czestotliwosc.
+    // No podstawie zmian zmiennej state jestesmy w stanie policzyc okres.
+
     uint8_t state = 0;
     uint32_t t1 = 0;
     uint32_t t2 = 0;
@@ -127,17 +132,24 @@ int32_t temp_read (void)
     while(GET_TEMP_STATE == state);
     state = !state;
 
+    // Czas przed oczekiwaniem. Pierwsza wartosc potrzebna do policzenia okresu.
     t1 = getTicks();
 
+
+    // Czekamy na zmiane stanu 340 razy
     for (i = 0; i < NUM_HALF_PERIODS; i++) {
         while(GET_TEMP_STATE == state);
         state = !state;
     }
 
+    // Czas po oczekiwaniu. Druga wartosc potrzebna do policzenia okresu.
     t2 = getTicks();
+    // Przypadek normalny
     if (t2 > t1) {
         t2 = t2-t1;
     }
+    // Przypadek gdy zmienna odliczajaca czas od uruchomienia programu przekroczy zakres.
+    // Wtedy zaczyna liczyc od 0, co moze doporowadzic do sytuacji, ze t2 jest mniejsze niz t1.
     else {
         t2 = (0xFFFFFFFF - t1 + 1) + t2;
     }
